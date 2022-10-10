@@ -1,5 +1,5 @@
 import Notiflix from 'notiflix';
-import { Component } from 'react';
+import { useState, useEffect } from 'react';
 import { Searchbar } from '../Searchbar/Searchbar';
 import { ImageGallery } from '../ImageGallery/ImageGallery';
 import { AppContainer } from './App.styled';
@@ -9,102 +9,87 @@ import { fetchCards } from 'components/Services/fetchCards';
 import { Modal } from 'components/Modal/Modal';
 const axios = require('axios').default;
 
-export class App extends Component {
-  state = {
-    query: '',
-    page: 1,
-    hits: [],
-    isLoading: false,
-    shouldButtonShow: true,
-    isModalOpen: false,
-    largeImageURL: '',
-  };
+export const App = () => {
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [hits, setHits] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [shouldButtonShow, setShouldButtonShow] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [largeImageURL, setLargeImageURL] = useState('');
 
-  componentDidUpdate(prevProps, prevState) {
-    const { query, page } = this.state;
-
-    if (prevState.page !== page) {
-      this.fetchHits(query);
+  useEffect(() => {
+    if (query !== '') {
+      fetchHits(query);
     }
-  }
 
-  toggleModal = largeImageURL => {
-    this.setState(({ isModalOpen }) => ({
-      isModalOpen: !isModalOpen,
-      largeImageURL,
-    }));
-  };
+    async function fetchHits(query) {
+      setIsLoading(true);
+      setShouldButtonShow(true);
 
-  onLoadMoreClick = () => {
-    this.setState(prevState => ({
-      page: prevState.page + 1,
-    }));
-  };
+      try {
+        const url = fetchCards(query, page);
+        const response = await axios.get(url);
 
-  onSubmitClick = query => {
-    this.setState({ page: 1 });
+        const {
+          data: { hits, totalHits },
+        } = response;
 
-    this.fetchHits(query);
-  };
+        if (hits.length < 1 && page === 1) {
+          setIsLoading(false);
+          setHits([]);
 
-  fetchHits = async query => {
-    this.setState({ query, isLoading: true, shouldButtonShow: true });
+          throw new Error(
+            Notiflix.Notify.failure(
+              'Sorry, there are no images matching your search query. Please try again.'
+            )
+          );
+        }
 
-    try {
-      const { page } = this.state;
+        if (page >= Math.ceil(totalHits / 12)) {
+          setShouldButtonShow(false);
+        }
 
-      const url = fetchCards(query, page);
-      const response = await axios.get(url);
-
-      const {
-        data: { hits, totalHits },
-      } = response;
-
-      if (hits.length < 1 && page === 1) {
-        this.setState({ isLoading: false, hits: [] });
-
-        throw new Error(
-          Notiflix.Notify.failure(
-            'Sorry, there are no images matching your search query. Please try again.'
-          )
-        );
+        if (page !== 1) {
+          setHits(prevState => prevState.concat(hits));
+          setIsLoading(false);
+        } else {
+          setHits(hits);
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.log(error);
       }
-
-      if (this.state.page >= Math.ceil(totalHits / 12)) {
-        this.setState({ shouldButtonShow: false });
-      }
-
-      this.setState(prevState =>
-        prevState.page !== 1
-          ? {
-              hits: prevState.hits.concat(hits),
-              isLoading: false,
-            }
-          : { hits, isLoading: false }
-      );
-    } catch (error) {
-      console.log(error);
     }
+  }, [page, query]);
+
+  const toggleModal = largeImageURL => {
+    setIsModalOpen(prevState => !prevState);
+    setLargeImageURL(largeImageURL);
   };
 
-  render() {
-    const { isLoading, hits, shouldButtonShow, isModalOpen, largeImageURL } =
-      this.state;
+  const onLoadMoreClick = () => {
+    setPage(prevState => prevState + 1);
+  };
 
-    return (
-      <AppContainer>
-        <Searchbar onSubmit={this.onSubmitClick} />
-        <ImageGallery hits={hits} toggleModal={this.toggleModal} />
+  const onSubmitClick = query => {
+    setPage(1);
+    setQuery(query);
+  };
 
-        {isModalOpen && (
-          <Modal largeImageURL={largeImageURL} onClose={this.toggleModal} />
-        )}
+  return (
+    <AppContainer>
+      <Searchbar onSubmit={onSubmitClick} />
+      <ImageGallery hits={hits} toggleModal={toggleModal} />
 
-        {isLoading && <Loader />}
-        {hits.length > 0 && shouldButtonShow && (
-          <Button onClick={this.onLoadMoreClick} />
-        )}
-      </AppContainer>
-    );
-  }
-}
+      {isModalOpen && (
+        <Modal largeImageURL={largeImageURL} onClose={toggleModal} />
+      )}
+
+      {isLoading && <Loader />}
+      {hits.length > 0 && shouldButtonShow && (
+        <Button onClick={onLoadMoreClick} />
+      )}
+    </AppContainer>
+  );
+};
